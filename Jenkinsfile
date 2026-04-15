@@ -2,18 +2,16 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "weather-app"
-        DOCKERHUB_USER = "valariembuh"
-        IMAGE_TAG = "latest"
-        FULL_IMAGE = "${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+        APP_NAME = "weather-app"
+        DOCKER_IMAGE = "valariembuh/weather-app:latest"
+        KUBECONFIG = "/var/jenkins_home/.kube/config"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                // Jenkins automatically checks out code from SCM
-                echo 'Code already checked out by Jenkins SCM'
+                checkout scm
             }
         }
 
@@ -25,22 +23,30 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/Dockerfile ."
+                sh """
+                    docker build -t ${APP_NAME}:latest -f docker/Dockerfile .
+                """
             }
         }
 
         stage('Tag Image') {
             steps {
-                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${FULL_IMAGE}"
+                sh """
+                    docker tag ${APP_NAME}:latest ${DOCKER_IMAGE}
+                """
             }
         }
 
         stage('Push Image to DockerHub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-cred',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
                     sh """
-                        echo $PASS | docker login -u $USER --password-stdin
-                        docker push ${FULL_IMAGE}
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push ${DOCKER_IMAGE}
                     """
                 }
             }
@@ -48,17 +54,22 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh "kubectl apply -f k8s/"
+                sh """
+                    echo "Using kubeconfig: $KUBECONFIG"
+                    kubectl version --client
+                    kubectl get nodes
+                    kubectl apply -f k8s/ --validate=false
+                """
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline executed successfully 🚀'
+            echo "Pipeline SUCCESS 🚀"
         }
         failure {
-            echo 'Pipeline failed ❌ check logs'
+            echo "Pipeline FAILED ❌ check logs"
         }
     }
-}
+}}
