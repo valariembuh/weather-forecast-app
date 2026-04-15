@@ -9,67 +9,55 @@ pipeline {
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Verify Files') {
+        stage('Build Image') {
             steps {
-                sh 'ls -la'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                sh """
-                    docker build -t ${APP_NAME}:latest -f docker/Dockerfile .
-                """
+                sh 'docker build -t weather-app:latest -f docker/Dockerfile .'
             }
         }
 
         stage('Tag Image') {
             steps {
-                sh """
-                    docker tag ${APP_NAME}:latest ${DOCKER_IMAGE}
-                """
+                sh 'docker tag weather-app:latest valariembuh/weather-app:latest'
             }
         }
 
-        stage('Push Image to DockerHub') {
+        stage('Push Image') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-cred',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
+                    usernameVariable: 'USER',
+                    passwordVariable: 'PASS'
                 )]) {
-                    sh """
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_IMAGE}
-                    """
+                    sh '''
+                        echo $PASS | docker login -u $USER --password-stdin
+                        docker push valariembuh/weather-app:latest
+                    '''
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                    echo "Using kubeconfig: $KUBECONFIG"
-                    kubectl version --client
+                sh '''
                     kubectl get nodes
                     kubectl apply -f k8s/ --validate=false
-                """
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "Pipeline SUCCESS 🚀"
+            echo "SUCCESS 🚀"
         }
         failure {
-            echo "Pipeline FAILED ❌ check logs"
+            echo "FAILED ❌"
         }
     }
-}}
+}
