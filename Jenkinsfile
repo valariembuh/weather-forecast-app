@@ -2,9 +2,8 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME = "weather-app"
         DOCKER_IMAGE = "valariembuh/weather-app:latest"
-        KUBECONFIG = "/var/jenkins_home/.kube/config"
+        KUBE_CONFIG = "/var/jenkins_home/.kube/config"
     }
 
     stages {
@@ -15,49 +14,51 @@ pipeline {
             }
         }
 
-        stage('Build Image') {
+        stage('Build Docker Image') {
             steps {
-                sh 'docker build -t weather-app:latest -f docker/Dockerfile .'
+                sh "docker build -t weather-app:latest -f docker/Dockerfile ."
             }
         }
 
         stage('Tag Image') {
             steps {
-                sh 'docker tag weather-app:latest valariembuh/weather-app:latest'
+                sh "docker tag weather-app:latest ${DOCKER_IMAGE}"
             }
         }
 
-        stage('Push Image') {
+        stage('Login & Push DockerHub') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-cred',
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
                     usernameVariable: 'USER',
-                    passwordVariable: 'PASS'
-                )]) {
-                    sh '''
+                    passwordVariable: 'PASS')]) {
+
+                    sh """
                         echo $PASS | docker login -u $USER --password-stdin
-                        docker push valariembuh/weather-app:latest
-                    '''
+                        docker push ${DOCKER_IMAGE}
+                    """
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh '''
-                    kubectl get nodes
-                    kubectl apply -f k8s/ --validate=false
-                '''
+                sh """
+                    export KUBECONFIG=${KUBE_CONFIG}
+                    kubectl version --client
+                    kubectl apply -f k8s/
+                    kubectl get pods
+                    kubectl get svc
+                """
             }
         }
     }
 
     post {
         success {
-            echo "SUCCESS 🚀"
+            echo "Pipeline SUCCESS 🚀"
         }
         failure {
-            echo "FAILED ❌"
+            echo "Pipeline FAILED ❌"
         }
     }
 }
