@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "valariembuh/weather-app:latest"
-        KUBE_CONFIG = "/var/jenkins_home/.kube/config"
     }
 
     stages {
@@ -16,49 +15,32 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t weather-app:latest -f docker/Dockerfile ."
+                sh 'docker build -t weather-app:latest -f docker/Dockerfile .'
             }
         }
 
         stage('Tag Image') {
             steps {
-                sh "docker tag weather-app:latest ${DOCKER_IMAGE}"
+                sh 'docker tag weather-app:latest $DOCKER_IMAGE'
             }
         }
 
-        stage('Login & Push DockerHub') {
+        stage('Docker Login') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
-                    usernameVariable: 'USER',
-                    passwordVariable: 'PASS')]) {
-
-                    sh """
-                        echo $PASS | docker login -u $USER --password-stdin
-                        docker push ${DOCKER_IMAGE}
-                    """
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Push Image') {
             steps {
-                sh """
-                    export KUBECONFIG=${KUBE_CONFIG}
-                    kubectl version --client
-                    kubectl apply -f k8s/
-                    kubectl get pods
-                    kubectl get svc
-                """
+                sh 'docker push $DOCKER_IMAGE'
             }
         }
     }
-
-    post {
-        success {
-            echo "Pipeline SUCCESS 🚀"
-        }
-        failure {
-            echo "Pipeline FAILED ❌"
-        }
-    }
-}
+}}

@@ -1,7 +1,8 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: weather-config
+  name: weather-app-config
 data:
-  ENV: "production"
-  APP_NAME: "weather-app"
+  APP_ENV: "production"
+  APP_DEBUG: "false"
+  CITY: "Chicago""
