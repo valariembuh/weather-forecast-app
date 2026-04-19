@@ -2,90 +2,78 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "valariembuh/weather-app"
-        IMAGE_TAG  = "latest"
-        DOCKERHUB_CREDENTIALS = "dockerhub-creds"
+        DOCKER_IMAGE = "valariembuh/weather-app"
+        DOCKER_CREDENTIALS = "dockerhub-creds"
+        KUBE_CONFIG = "/var/jenkins_home/.kube/config"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                echo "📥 Cloning repository..."
-                git branch: 'main',
-                    url: 'https://github.com/valariembuh/weather-forecast-app.git'
+                checkout scm
             }
         }
 
-        stage('Run Tests (optional)') {
+        stage('Set Build Tag') {
             steps {
-                echo "🧪 Running basic checks..."
-                sh '''
-                    if [ -f requirements.txt ]; then
-                        echo "Python project detected"
-                    fi
-                '''
+                script {
+                    env.IMAGE_TAG = "${BUILD_NUMBER}"
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo "🐳 Building Docker image..."
                 sh """
-                    docker build -t $IMAGE_NAME:$IMAGE_TAG -f docker/Dockerfile .
+                docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} -f docker/Dockerfile .
                 """
             }
         }
 
-        stage('Security & Image Validation') {
+        stage('Login to DockerHub') {
             steps {
-                echo "🔍 Validating image..."
-                sh "docker images | grep weather-app"
-            }
-        }
-
-        stage('Docker Login') {
-            steps {
-                echo "🔐 Logging into DockerHub..."
-                withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}",
-                                                  usernameVariable: 'USER',
-                                                  passwordVariable: 'PASS')]) {
-                    sh '''
-                        echo $PASS | docker login -u $USER --password-stdin
-                    '''
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_CREDENTIALS}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    """
                 }
             }
         }
 
-        stage('Tag & Push Image') {
+        stage('Push Docker Image') {
             steps {
-                echo "📤 Pushing image to DockerHub..."
                 sh """
-                    docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:$IMAGE_TAG
-                    docker push $IMAGE_NAME:$IMAGE_TAG
+                docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
                 """
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                echo "☸️ Deploying to Minikube..."
-
                 sh """
-                    kubectl apply -f k8s/configmap.yaml
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl apply -f k8s/service.yaml
+                export KUBECONFIG=${KUBE_CONFIG}
+
+                kubectl apply -f k8s/configmap.yaml
+                kubectl apply -f k8s/deployment.yaml
+                kubectl apply -f k8s/service.yaml
+                kubectl apply -f k8s/hpa.yaml
+
+                kubectl set image deployment/weather-app weather-app=${DOCKER_IMAGE}:${IMAGE_TAG}
                 """
             }
         }
 
         stage('Verify Deployment') {
             steps {
-                echo "📊 Checking rollout status..."
                 sh """
-                    kubectl get pods
-                    kubectl get svc
-                    kubectl rollout status deployment/weather-app
+                kubectl get pods
+                kubectl get svc
+                kubectl rollout status deployment/weather-app
                 """
             }
         }
@@ -93,16 +81,11 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline SUCCESS - App deployed successfully!"
+            echo "✅ Pipeline SUCCESS: App deployed successfully!"
         }
 
         failure {
-            echo "❌ Pipeline FAILED - check logs"
-        }
-
-        always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
+            echo "❌ Pipeline FAILED: Check logs."
         }
     }
 }
