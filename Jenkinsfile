@@ -2,42 +2,41 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "valariembuh/weather-app:latest"
-        K8S_DEPLOYMENT = "weather-app"
-        K8S_SERVICE = "weather-app-service"
+        IMAGE_NAME = "valariembuh/weather-app"
+        IMAGE_TAG = "latest"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                // FIX: force correct branch (main)
                 git branch: 'main',
-                    url: 'https://github.com/valariembuh/weather-forecast-app.git'
+                url: 'https://github.com/valariembuh/weather-forecast-app.git'
+            }
+        }
+
+        stage('Install Dependencies (optional check)') {
+            steps {
+                sh '''
+                echo "Checking project structure..."
+                ls -la
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t weather-app:latest -f docker/Dockerfile ."
+                sh '''
+                docker build -t $IMAGE_NAME:$IMAGE_TAG -f Dockerfile .
+                '''
             }
         }
 
-        stage('Tag Image') {
+        stage('Login to DockerHub') {
             steps {
-                sh "docker tag weather-app:latest ${DOCKER_IMAGE}"
-            }
-        }
-
-        stage('Docker Login') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
+                withCredentials([string(credentialsId: 'dockerhub-pass', variable: 'DOCKER_PASS')]) {
                     sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    echo $DOCKER_PASS | docker login -u valariembuh --password-stdin
                     '''
                 }
             }
@@ -45,35 +44,19 @@ pipeline {
 
         stage('Push Image') {
             steps {
-                sh "docker push ${DOCKER_IMAGE}"
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
                 sh '''
-                    kubectl apply -f k8s/configmap.yaml
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl apply -f k8s/service.yaml
-                    kubectl apply -f k8s/hpa.yaml
+                docker push $IMAGE_NAME:$IMAGE_TAG
                 '''
-            }
-        }
-
-        stage('Restart Deployment') {
-            steps {
-                sh "kubectl rollout restart deployment ${K8S_DEPLOYMENT}"
             }
         }
     }
 
     post {
         success {
-            echo "🚀 Deployment successful! Weather app is live on Kubernetes."
+            echo '✅ CI Pipeline completed successfully!'
         }
-
         failure {
-            echo "❌ Pipeline failed. Check logs."
+            echo '❌ Pipeline failed. Check logs.'
         }
     }
 }
