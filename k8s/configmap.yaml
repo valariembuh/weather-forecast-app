@@ -5,4 +5,4 @@ metadata:
 data:
   APP_ENV: "production"
   APP_DEBUG: "false"
-  CITY: "Chicago""
+  CITY: "Chicago"
