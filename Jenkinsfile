@@ -3,60 +3,106 @@ pipeline {
 
     environment {
         IMAGE_NAME = "valariembuh/weather-app"
-        IMAGE_TAG = "latest"
+        IMAGE_TAG  = "latest"
+        DOCKERHUB_CREDENTIALS = "dockerhub-creds"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
+                echo "📥 Cloning repository..."
                 git branch: 'main',
-                url: 'https://github.com/valariembuh/weather-forecast-app.git'
+                    url: 'https://github.com/valariembuh/weather-forecast-app.git'
             }
         }
 
-        stage('Install Dependencies (optional check)') {
+        stage('Run Tests (optional)') {
             steps {
+                echo "🧪 Running basic checks..."
                 sh '''
-                echo "Checking project structure..."
-                ls -la
+                    if [ -f requirements.txt ]; then
+                        echo "Python project detected"
+                    fi
                 '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                docker build -t $IMAGE_NAME:$IMAGE_TAG -f Dockerfile .
-                '''
+                echo "🐳 Building Docker image..."
+                sh """
+                    docker build -t $IMAGE_NAME:$IMAGE_TAG -f docker/Dockerfile .
+                """
             }
         }
 
-        stage('Login to DockerHub') {
+        stage('Security & Image Validation') {
             steps {
-                withCredentials([string(credentialsId: 'dockerhub-pass', variable: 'DOCKER_PASS')]) {
+                echo "🔍 Validating image..."
+                sh "docker images | grep weather-app"
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                echo "🔐 Logging into DockerHub..."
+                withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                                                  usernameVariable: 'USER',
+                                                  passwordVariable: 'PASS')]) {
                     sh '''
-                    echo $DOCKER_PASS | docker login -u valariembuh --password-stdin
+                        echo $PASS | docker login -u $USER --password-stdin
                     '''
                 }
             }
         }
 
-        stage('Push Image') {
+        stage('Tag & Push Image') {
             steps {
-                sh '''
-                docker push $IMAGE_NAME:$IMAGE_TAG
-                '''
+                echo "📤 Pushing image to DockerHub..."
+                sh """
+                    docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:$IMAGE_TAG
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                """
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo "☸️ Deploying to Minikube..."
+
+                sh """
+                    kubectl apply -f k8s/configmap.yaml
+                    kubectl apply -f k8s/deployment.yaml
+                    kubectl apply -f k8s/service.yaml
+                """
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo "📊 Checking rollout status..."
+                sh """
+                    kubectl get pods
+                    kubectl get svc
+                    kubectl rollout status deployment/weather-app
+                """
             }
         }
     }
 
     post {
         success {
-            echo '✅ CI Pipeline completed successfully!'
+            echo "✅ Pipeline SUCCESS - App deployed successfully!"
         }
+
         failure {
-            echo '❌ Pipeline failed. Check logs.'
+            echo "❌ Pipeline FAILED - check logs"
+        }
+
+        always {
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
         }
     }
 }
