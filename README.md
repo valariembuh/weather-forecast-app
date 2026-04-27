@@ -1,7 +1,4 @@
-This project helped me understand:
+# Weather Forecast DevOps CI/CD Pipeline 🚀
 
-- How CI/CD pipelines actually work in real environments  
-- How containers make deployments consistent  
-- How Kubernetes manages and scales applications  
-- How automation reduces manual deployment work.  
+End-to-end CI/CD pipeline using Jenkins, Docker, and Kubernetes for automated deployment of a containerized weather application..  
 
