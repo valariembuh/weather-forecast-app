@@ -2,16 +2,10 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "your-dockerhub-username/weather-app"
+        DOCKER_IMAGE = "valariembuh/weather-forecast-app"
     }
 
     stages {
-
-        stage('Clone GitHub Repo') {
-            steps {
-                git 'https://github.com/your-username/weather-app.git'
-            }
-        }
 
         stage('Build Docker Image') {
             steps {
